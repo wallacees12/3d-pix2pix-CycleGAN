@@ -47,10 +47,23 @@ data_loader = CreateDataLoader(opt)
 dataset = data_loader.load_data()
 model = create_model(opt)
 
-npz_output_dir = os.path.join(opt.results_dir, opt.name, f'{opt.phase}_{opt.which_epoch}_npz')
-os.makedirs(npz_output_dir, exist_ok=True)
+# Create organized directory structure
+model_results_dir = os.path.join(opt.results_dir, opt.name)
+npz_output_dir = os.path.join(model_results_dir, f'{opt.phase}_{opt.which_epoch}_npz')
+for_upscaling_dir = os.path.join(model_results_dir, 'for_upscaling')
+upscaled_results_dir = os.path.join(model_results_dir, 'upscaled_results')
 
-print(f"Saving NPZ files to: {npz_output_dir}")
+# Create all directories
+os.makedirs(npz_output_dir, exist_ok=True)
+os.makedirs(for_upscaling_dir, exist_ok=True)
+os.makedirs(upscaled_results_dir, exist_ok=True)
+
+print(f"📁 Organized Directory Structure Created:")
+print(f"   Model: {opt.name}")
+print(f"   NPZ Results: {npz_output_dir}")
+print(f"   For Upscaling: {for_upscaling_dir}")
+print(f"   Upscaled Results: {upscaled_results_dir}")
+print(f"\nSaving NPZ files to: {npz_output_dir}")
 dataset_size = len(dataset)
 total_samples = min(opt.how_many, dataset_size)
 print(f"Dataset size: {dataset_size}")
@@ -113,3 +126,46 @@ print("  - 'real_B': Ground truth CT (external if provided)")
 print("\n✅ CT Denormalization:")
 print(f"  [-1,1] → [{HU_MIN}, {HU_MAX}] HU")
 print("  Matches normalization from CT_normalization.ipynb")
+
+# Automatically prepare synthetic CT files for upscaling
+print(f"\n🚀 Preparing synthetic CT files for upscaling...")
+upscaling_files_created = 0
+
+for npz_file in os.listdir(npz_output_dir):
+    if npz_file.endswith('.npz'):
+        npz_path = os.path.join(npz_output_dir, npz_file)
+        
+        try:
+            # Load NPZ file
+            data = np.load(npz_path)
+            
+            if 'fake_B' in data:
+                synthetic_ct = data['fake_B']
+                
+                # Create filename for upscaling (include model name)
+                base_name = os.path.splitext(npz_file)[0]
+                upscaling_filename = f"{base_name}_{opt.name}_synthetic_ct.npz"
+                upscaling_path = os.path.join(for_upscaling_dir, upscaling_filename)
+                
+                # Save synthetic CT for upscaling
+                np.savez_compressed(upscaling_path, synthetic_ct=synthetic_ct)
+                upscaling_files_created += 1
+                
+                print(f"  ✅ {upscaling_filename}")
+                
+        except Exception as e:
+            print(f"  ❌ Error processing {npz_file}: {e}")
+
+print(f"\n📦 Summary:")
+print(f"   NPZ files created: {total_samples}")
+print(f"   Upscaling files prepared: {upscaling_files_created}")
+print(f"   Ready for Upscaling_Pipeline.ipynb!")
+
+print(f"\n📁 Final Directory Structure:")
+print(f"   results/{opt.name}/")
+print(f"   ├── {os.path.basename(npz_output_dir)}/     (NPZ inference results)")
+print(f"   ├── for_upscaling/           (Files ready for upscaling)")
+print(f"   └── upscaled_results/        (Ready for final outputs)")
+print(f"\n🎯 Next steps:")
+print(f"   1. Run Upscaling_Pipeline.ipynb to upscale the synthetic CT")
+print(f"   2. Or use Visualize_NPZ_Results.ipynb to inspect results first")

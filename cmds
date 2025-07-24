@@ -29,4 +29,5 @@ python test_npz.py \
   --which_epoch latest \
   --results_dir ./results \
   --gpu_ids -1 \
+  --which_epoch 700 \
   --nThreads 0

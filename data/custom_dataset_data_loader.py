@@ -16,6 +16,9 @@ def CreateDataset(opt):
     elif opt.dataset_mode == 'nodule':
         from data.nodule_dataset import NoduleDataset
         dataset = NoduleDataset()
+    elif opt.dataset_mode == 'four_channel':
+        from data.four_channel_dataset import FourChannelDataset
+        dataset = FourChannelDataset(opt)
     else:
         raise ValueError("Dataset [%s] not recognized." % opt.dataset_mode)
 

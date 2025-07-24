@@ -18,6 +18,10 @@ def create_model(opt):
         assert(opt.dataset_mode == 'nodule')
         from .pix2pix3d_model import Pix2Pix3dModel
         model = Pix2Pix3dModel()
+    elif opt.model == 'pix2pix_4channel':
+        assert(opt.dataset_mode == 'four_channel')
+        from .pix2pix_4channel_model import Pix2Pix4ChannelModel
+        model = Pix2Pix4ChannelModel()
     else:
         raise ValueError("Model [%s] not recognized." % opt.model)
     model.initialize(opt)
