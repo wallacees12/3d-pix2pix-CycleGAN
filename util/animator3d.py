@@ -17,7 +17,7 @@ class MedicalImageAnimator(object):
         fig = plt.figure()
         ax = fig.add_subplot(111)
 
-        dims = range(3)
+        dims = list(range(3))
         dims.pop(dim)
 
         ant, = ax.plot(

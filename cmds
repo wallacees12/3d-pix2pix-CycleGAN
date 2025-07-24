@@ -1,0 +1,32 @@
+python train.py \
+--dataroot ./datasets/channel1_only/ \
+--name 3000_range_128 \
+--which_model_netG unet_128 \
+--model pix2pix3d \
+--dataset_mode nodule \
+--input_nc 1 \
+--output_nc 1 \
+--depthSize 32 \
+--fineSize 128 \
+--batchSize 1 \
+--niter 1000 \
+--lr 0.0002 \
+--print_freq 1 \
+--save_epoch_freq 10 \
+--gpu_ids -1 \
+--nThreads 0
+
+
+
+python test_npz.py \
+  --dataroot datasets/channel1_only \
+  --name 1200_range_128 \
+  --model pix2pix3d \
+  --dataset_mode nodule \
+  --input_nc 1 \
+  --output_nc 1 \
+  --which_model_netG unet_128 \
+  --which_epoch latest \
+  --results_dir ./results \
+  --gpu_ids -1 \
+  --nThreads 0
