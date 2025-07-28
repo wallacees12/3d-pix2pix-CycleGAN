@@ -6,12 +6,12 @@
 set -e  # Exit on any error
 
 # Configuration
-DATA_DIR="/home/sawall/scratch/latent_data/test"
-MODEL_NAME="hn_mr_to_ct_bs4"
-CHECKPOINTS_DIR='/home/sawall/scratch/checkpoints'
+DATA_DIR=""
+MODEL_NAME=""
 EPOCH="latest"
-GPU_IDS="-1"
-METHOD="sitk"  # or "sitk"
+GPU_IDS="0"
+METHOD="scipy"  # or "sitk"
+FIX_MKL="true"  # Fix Intel MKL issues by default
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -36,6 +36,10 @@ while [[ $# -gt 0 ]]; do
             METHOD="$2"
             shift 2
             ;;
+        --no-mkl-fix)
+            FIX_MKL="false"
+            shift 1
+            ;;
         --help)
             echo "Usage: $0 --data_dir PATH --model_name NAME [OPTIONS]"
             echo ""
@@ -47,6 +51,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --epoch EPOCH        Model epoch to use (default: latest)"
             echo "  --gpu_ids IDS        GPU IDs to use (default: 0)"
             echo "  --method METHOD      Upscaling method: scipy or sitk (default: scipy)"
+            echo "  --no-mkl-fix         Disable Intel MKL threading fixes"
             echo ""
             echo "Note: Uses existing scripts/launch_4channel_testing.py for inference"
             echo ""
@@ -103,14 +108,43 @@ echo ""
 
 # Step 2: Run inference using existing testing script
 echo "🧠 Step 2: Running inference through trained model..."
+
+# Set environment variables to fix Intel MKL threading issues
+if [[ "$FIX_MKL" == "true" ]]; then
+    export MKL_THREADING_LAYER=GNU
+    export MKL_SERVICE_FORCE_INTEL=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+    export VECLIB_MAXIMUM_THREADS=1
+    export NUMEXPR_NUM_THREADS=1
+    echo "🔧 Environment configured for Intel MKL compatibility"
+else
+    echo "⚠️  Intel MKL fixes disabled (use --no-mkl-fix to disable)"
+fi
+
 python scripts/launch_4channel_testing.py \
     --dataroot "$DATA_DIR" \
     --name "$MODEL_NAME" \
     --which_epoch "$EPOCH" \
-    --gpu_ids "$GPU_IDS" \
-    --checkpoints_dir "$CHECKPOINTS_DIR" 
+    --gpu_ids "$GPU_IDS"
+
 if [[ $? -ne 0 ]]; then
     echo "❌ Inference failed"
+    echo ""
+    echo "🔧 Troubleshooting Intel MKL issues:"
+    echo "   1. Try running with different MKL settings:"
+    echo "      source fix_mkl.sh"
+    echo "      python ../scripts/launch_4channel_testing.py --dataroot \"$DATA_DIR\" --name \"$MODEL_NAME\" --which_epoch \"$EPOCH\" --gpu_ids \"$GPU_IDS\""
+    echo ""
+    echo "   2. Alternative environment variables:"
+    echo "      export MKL_INTERFACE_LAYER=GNU,LP64"
+    echo "      export MKL_THREADING_LAYER=INTEL"
+    echo ""
+    echo "   3. Use different conda environment or reinstall PyTorch:"
+    echo "      conda install pytorch torchvision -c pytorch"
+    echo ""
+    echo "   4. Run with --no-mkl-fix to disable automatic fixes"
     exit 1
 fi
 
