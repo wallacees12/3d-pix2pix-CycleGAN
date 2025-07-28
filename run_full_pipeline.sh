@@ -6,11 +6,12 @@
 set -e  # Exit on any error
 
 # Configuration
-DATA_DIR=""
-MODEL_NAME=""
+DATA_DIR="/home/sawall/scratch/latent_data/test"
+MODEL_NAME="hn_mr_to_ct_bs4"
+CHECKPOINTS_DIR='/home/sawall/scratch/checkpoints'
 EPOCH="latest"
-GPU_IDS="0"
-METHOD="scipy"  # or "sitk"
+GPU_IDS="-1"
+METHOD="sitk"  # or "sitk"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -102,12 +103,12 @@ echo ""
 
 # Step 2: Run inference using existing testing script
 echo "🧠 Step 2: Running inference through trained model..."
-python ../scripts/launch_4channel_testing.py \
+python scripts/launch_4channel_testing.py \
     --dataroot "$DATA_DIR" \
     --name "$MODEL_NAME" \
     --which_epoch "$EPOCH" \
-    --gpu_ids "$GPU_IDS"
-
+    --gpu_ids "$GPU_IDS" \
+    --checkpoints_dir "$CHECKPOINTS_DIR" 
 if [[ $? -ne 0 ]]; then
     echo "❌ Inference failed"
     exit 1
