@@ -19,11 +19,11 @@ class FourChannelDataset(Dataset):
     
     def __init__(self, opt):
         """
-        Initialize 4-channel dataset
+        Initialize 4-channel dataset for latent_scaled structure
         
         Args:
             opt: Options containing dataset configuration
-                - dataroot: Root directory containing the dataset
+                - dataroot: Root directory (should be latent_scaled folder)
                 - phase: 'train', 'val', or 'test'
                 - input_nc: Number of input channels (should be 4)
                 - output_nc: Number of output channels (should be 1)
@@ -31,22 +31,52 @@ class FourChannelDataset(Dataset):
         self.opt = opt
         self.root = opt.dataroot
         
-        # Load dataset metadata
-        crops_file = os.path.join(self.root, "crops.pkl")
-        if not os.path.exists(crops_file):
-            raise FileNotFoundError(f"Dataset metadata not found: {crops_file}")
+        # Set up folder paths for MR and CT
+        self.mr_dir = os.path.join(self.root, "MR")
+        self.ct_dir = os.path.join(self.root, "CT")
         
-        with open(crops_file, 'rb') as f:
-            self.samples = pickle.load(f)
+        # Validate directories exist
+        if not os.path.exists(self.mr_dir):
+            raise FileNotFoundError(f"MR directory not found: {self.mr_dir}")
+        if not os.path.exists(self.ct_dir):
+            raise FileNotFoundError(f"CT directory not found: {self.ct_dir}")
         
-        print(f"📊 Loaded {len(self.samples)} samples from {crops_file}")
+        # Find all NPZ files in MR directory
+        mr_files = [f for f in os.listdir(self.mr_dir) if f.endswith('.npz')]
+        ct_files = [f for f in os.listdir(self.ct_dir) if f.endswith('.npz')]
+
+       
         
-        # Validate sample data
-        for i, sample in enumerate(self.samples):
-            required_keys = ['name', 'mr_path', 'ct_path', 'bounds']
-            for key in required_keys:
-                if key not in sample:
-                    raise KeyError(f"Sample {i} missing required key: {key}")
+        print(f"� Found {len(mr_files)} MR files and {len(ct_files)} CT files")
+        
+        # Create samples list by matching MR and CT files
+        self.samples = []
+        for mr_file in sorted(mr_files):
+            # Extract patient name (remove .npz extension)
+            patient_name = os.path.splitext(mr_file)[0]
+            
+            # Show exact filenames being checked
+            patient_id = os.path.splitext(mr_file)[0].replace("_latent_mr", "")
+            expected_ct = f"{patient_id}_latent_ct.npz"
+            
+            
+            # Check exact match
+            if expected_ct in ct_files:
+                sample = {
+                    'name': patient_name,
+                    'mr_path': os.path.join("MR", mr_file),
+                    'ct_path': os.path.join("CT", expected_ct),
+                    'bounds': None
+                }
+                self.samples.append(sample)
+                print(f"✅ Paired: {patient_name}")
+            else:
+                # Print all candidates if no match
+                print(f"❌ No CT match for {mr_file}. Available CT files (truncated):")
+                print(f"    → {ct_files[:5]} ...")
+        
+        if not self.samples:
+            raise ValueError("No paired MR-CT samples found!")
         
         # Data augmentation settings
         self.use_augmentation = opt.phase == 'train' and not opt.no_flip
@@ -56,6 +86,8 @@ class FourChannelDataset(Dataset):
         print(f"   Phase: {getattr(opt, 'phase', 'train')}")
         print(f"   Samples: {len(self.samples)}")
         print(f"   Augmentation: {self.use_augmentation}")
+        print(f"   Expected MR shape: (4, 256, 256)")
+        print(f"   Expected CT shape: (256, 256)")
     
     def name(self):
         """Return dataset name"""
@@ -105,7 +137,7 @@ class FourChannelDataset(Dataset):
         # Handle channel dimensions
         if len(mr_data.shape) == 4:
             # Already has channels [D, H, W, C] → [C, D, H, W]
-            mr_data = np.transpose(mr_data, (3, 0, 1, 2))
+            # mr_data = np.transpose(mr_data, (3, 0, 1, 2))
             if mr_data.shape[0] != 4:
                 raise ValueError(f"Expected 4 MR channels, got {mr_data.shape[0]}")
         elif len(mr_data.shape) == 3:

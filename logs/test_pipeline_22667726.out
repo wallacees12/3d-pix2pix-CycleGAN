@@ -1,0 +1,245 @@
+
+Filesystems usage for user sawall ( uid 646284814 ):
+-------------------------------------------------------------------------------------
+Directory                           Used   Limit   Used,%         Files     Limit
+-------------------------------------------------------------------------------------
+/home/sawall                       2.8GB    15GB    18.4%        19,932   100,000
+/data/sawall                       132GB   200GB    65.7%     1,094,812          
+/scratch/sawall                    102GB    20TB     0.5%         4,673          
+
+/shares/tanadini-lang.physik.uzh      0B    10TB     0.0%             2          
+-------------------------------------------------------------------------------------
+
+Files on /scratch may be purged after 30 days.
+See https://docs.s3it.uzh.ch/cluster/data
+
+🚀 4-Channel Latent MR Testing Pipeline
+======================================
+Data directory: /home/sawall/scratch/latent_data/test
+Model name: hn_mr_to_ct_bs4
+Epoch: latest
+GPU IDs: 0
+Upscaling method: sitk
+
+📋 Step 1: Creating crops.pkl with downsampling information...
+🔍 Found 4 latent MR files
+   📊 Using CT spacing info from 1HNA001_ct.mha
+✅ 1HNA001: Added downsampling info from CT
+   Scale factors: (3.6875, 3.046875, 4.1640625)
+   Using CT spacing: 1HNA001_ct.mha
+   📊 Using CT spacing info from 1HNA004_ct.mha
+✅ 1HNA004: Added downsampling info from CT
+   Scale factors: (3.40625, 2.984375, 3.8984375)
+   Using CT spacing: 1HNA004_ct.mha
+   📊 Using CT spacing info from 1HNA006_ct.mha
+✅ 1HNA006: Added downsampling info from CT
+   Scale factors: (3.5, 2.78125, 4.1328125)
+   Using CT spacing: 1HNA006_ct.mha
+   📊 Using CT spacing info from 1HNA008_ct.mha
+✅ 1HNA008: Added downsampling info from CT
+   Scale factors: (4.09375, 3.0625, 4.609375)
+   Using CT spacing: 1HNA008_ct.mha
+
+✅ Created /home/sawall/scratch/latent_data/test/crops.pkl
+📊 4 test samples ready
+💡 Compatible with launch_4channel_training.py --phase test
+✅ crops.pkl created successfully
+
+🧠 Step 2: Running inference through trained model...
+⚠️  Intel MKL fixes disabled (use --no-mkl-fix to disable)
+------------ Options -------------
+aspect_ratio: 1.0
+batchSize: 1
+checkpoints_dir: /home/sawall/scratch/checkpoints
+dataroot: /home/sawall/scratch/latent_data/test
+dataset_mode: four_channel
+depthSize: 256
+display_id: 1
+display_port: 8097
+display_single_pane_ncols: 0
+display_winsize: 256
+fineSize: 256
+gpu_ids: [0]
+how_many: 50
+input_nc: 4
+isTrain: False
+loadSize: 286
+max_dataset_size: inf
+model: cycle_gan
+nThreads: 2
+n_layers_D: 3
+name: hn_mr_to_ct_bs4
+ndf: 64
+ngf: 64
+no_dropout: False
+no_flip: True
+norm: instance
+ntest: inf
+output_nc: 1
+phase: test
+resize_or_crop: resize_and_crop
+results_dir: ./results
+serial_batches: True
+which_direction: AtoB
+which_epoch: latest
+which_model_netD: basic
+which_model_netG: unet_4channel_128
+-------------- End ----------------
+🧪 4-Channel Testing with Original MR Dimensions:
+   Model: hn_mr_to_ct_bs4
+   Epoch: latest
+   Data: /home/sawall/scratch/latent_data/test
+   GPU: [0]
+   Batch size: 1
+📊 Loaded 4 test samples from /home/sawall/scratch/latent_data/test/crops.pkl
+✅ 4-Channel test dataset initialized:
+   Root: /home/sawall/scratch/latent_data/test
+   Phase: test (inference only)
+   Samples: 4
+   Expected: 4-channel latent MR + original MR files
+📊 Dataset size: 4
+🏗️ Creating 4-channel test model...
+✅ Successfully imported 4-channel networks
+🔄 Converted architecture: unet_4channel_128 → resnet_4channel_9blocks
+📦 Loading model from: /home/sawall/scratch/checkpoints/hn_mr_to_ct_bs4/netG_latest.pth
+💾 NPZ results will be saved to: ./results/hn_mr_to_ct_bs4/test_latest_npz
+🚀 Starting 4-channel inference...
+Processing samples:   0%|          | 0/4 [00:00<?, ?it/s]Processing samples:  25%|██▌       | 1/4 [00:01<00:03,  1.18s/it]Processing samples:  50%|█████     | 2/4 [00:01<00:01,  1.28it/s]Processing samples:  75%|███████▌  | 3/4 [00:02<00:00,  1.59it/s]Processing samples: 100%|██████████| 4/4 [00:02<00:00,  1.79it/s]📐 Loaded original MR for 1HNA001: /home/sawall/scratch/latent_data/test/1HNA001_mr.mha
+   Original MR shape: (118, 390, 533)
+   Target dimensions: (118, 390, 533)
+📐 Loaded original MR for 1HNA004: /home/sawall/scratch/latent_data/test/1HNA004_mr.mha
+   Original MR shape: (109, 382, 499)
+   Target dimensions: (109, 382, 499)
+📐 Loaded original MR for 1HNA006: /home/sawall/scratch/latent_data/test/1HNA006_mr.mha
+   Original MR shape: (112, 356, 529)
+   Target dimensions: (112, 356, 529)
+📐 Loaded original MR for 1HNA008: /home/sawall/scratch/latent_data/test/1HNA008_mr.mha
+   Original MR shape: (131, 392, 590)
+   Target dimensions: (131, 392, 590)
+Processing samples: 100%|██████████| 4/4 [00:02<00:00,  1.53it/s]
+💾 Saved: ./results/hn_mr_to_ct_bs4/test_latest_npz/1HNA001_synthetic_ct.npz
+   Sample: 1HNA001
+   Synthetic CT shape: (32, 128, 128)
+   Target shape: [118 390 533]
+   HU range: [-1023.9, 1197.7]
+   Scale factors: [np.float64(3.6875), np.float64(3.046875), np.float64(4.1640625)]
+💾 Saved: ./results/hn_mr_to_ct_bs4/test_latest_npz/1HNA004_synthetic_ct.npz
+   Sample: 1HNA004
+   Synthetic CT shape: (32, 128, 128)
+   Target shape: [109 382 499]
+   HU range: [-1023.9, 1197.7]
+   Scale factors: [np.float64(3.40625), np.float64(2.984375), np.float64(3.8984375)]
+💾 Saved: ./results/hn_mr_to_ct_bs4/test_latest_npz/1HNA006_synthetic_ct.npz
+   Sample: 1HNA006
+   Synthetic CT shape: (32, 128, 128)
+   Target shape: [112 356 529]
+   HU range: [-1023.9, 1197.8]
+   Scale factors: [np.float64(3.5), np.float64(2.78125), np.float64(4.1328125)]
+💾 Saved: ./results/hn_mr_to_ct_bs4/test_latest_npz/1HNA008_synthetic_ct.npz
+   Sample: 1HNA008
+   Synthetic CT shape: (32, 128, 128)
+   Target shape: [131 392 590]
+   HU range: [-1023.9, 1197.7]
+   Scale factors: [np.float64(4.09375), np.float64(3.0625), np.float64(4.609375)]
+
+✅ Testing completed!
+📁 Results saved in: ./results/hn_mr_to_ct_bs4/test_latest_npz
+🎯 Processed 4 samples
+
+📦 Each NPZ file contains:
+   - fake_B: Synthetic CT in HU [D_low, H_low, W_low]
+   - real_A: First channel of latent MR for reference
+   - target_shape: Target dimensions from original MR
+   - original_mr_shape: Shape of original MR
+   - sample_name: Patient identifier
+   - latent_shape: Shape of synthetic CT
+
+🔧 Next steps:
+   1. Use upscale.py to upscale synthetic CT to target dimensions
+   2. Example: python upscale.py --file ./results/hn_mr_to_ct_bs4/test_latest_npz/1HNA008_synthetic_ct.npz
+🧪 4-Channel Model Testing Launcher
+==================================================
+🔍 Validating configuration...
+✅ Dataset validation passed: /home/sawall/scratch/latent_data/test
+✅ Found model checkpoint: /home/sawall/scratch/checkpoints/hn_mr_to_ct_bs4/netG_latest.pth
+✅ Validation passed
+
+🚀 Starting 4-Channel Testing...
+📋 Command: /home/sawall/data/conda/envs/sCT/bin/python test_4channel.py --name hn_mr_to_ct_bs4 --dataroot /home/sawall/scratch/latent_data/test --gpu_ids 0 --which_epoch latest --how_many 50 --checkpoints_dir /home/sawall/scratch/checkpoints --results_dir ./results --which_model_netG unet_4channel_128 --input_nc 4 --output_nc 1 --dataset_mode four_channel --no_flip --serial_batches
+📁 Dataset: /home/sawall/scratch/latent_data/test
+🏗️ Architecture: unet_4channel_128
+💾 Experiment: hn_mr_to_ct_bs4
+📅 Epoch: latest
+🎮 GPU(s): 0
+📊 Samples: 50
+
+✅ Testing completed successfully!
+📁 Results saved to: results/hn_mr_to_ct_bs4/test_latest_npz
+🔍 Use Visualize_NPZ_Results.ipynb to inspect results
+✅ Inference completed
+
+📈 Step 3: Upscaling synthetic CT results...
+📊 Found 4 result files to upscale
+🔄 Upscaling: 1HNA004_synthetic_ct.npz
+🔍 Processing sample: 1HNA004
+📊 Synthetic CT shape: (32, 128, 128)
+✅ Found downsampling info for 1HNA004
+📐 Using original transformation:
+   Original shape: (109, 382, 499)
+   Latent shape: (32, 128, 128)
+   Scale factors: (3.40625, 2.984375, 3.8984375)
+   Original spacing: (1.0, 1.0, 1.0)
+🔄 Upscaled: (32, 128, 128) → (109, 382, 499)
+💾 Saved: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA004_upscaled.npz
+💾 Saved with proper spacing: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA004_upscaled.mha
+✅ Upscaled: 1HNA004_synthetic_ct.npz
+🔄 Upscaling: 1HNA006_synthetic_ct.npz
+🔍 Processing sample: 1HNA006
+📊 Synthetic CT shape: (32, 128, 128)
+✅ Found downsampling info for 1HNA006
+📐 Using original transformation:
+   Original shape: (112, 356, 529)
+   Latent shape: (32, 128, 128)
+   Scale factors: (3.5, 2.78125, 4.1328125)
+   Original spacing: (1.0, 1.0, 1.0)
+🔄 Upscaled: (32, 128, 128) → (112, 356, 529)
+💾 Saved: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA006_upscaled.npz
+💾 Saved with proper spacing: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA006_upscaled.mha
+✅ Upscaled: 1HNA006_synthetic_ct.npz
+🔄 Upscaling: 1HNA001_synthetic_ct.npz
+🔍 Processing sample: 1HNA001
+📊 Synthetic CT shape: (32, 128, 128)
+✅ Found downsampling info for 1HNA001
+📐 Using original transformation:
+   Original shape: (118, 390, 533)
+   Latent shape: (32, 128, 128)
+   Scale factors: (3.6875, 3.046875, 4.1640625)
+   Original spacing: (1.0, 1.0, 1.0)
+🔄 Upscaled: (32, 128, 128) → (118, 390, 533)
+💾 Saved: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA001_upscaled.npz
+💾 Saved with proper spacing: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA001_upscaled.mha
+✅ Upscaled: 1HNA001_synthetic_ct.npz
+🔄 Upscaling: 1HNA008_synthetic_ct.npz
+🔍 Processing sample: 1HNA008
+📊 Synthetic CT shape: (32, 128, 128)
+✅ Found downsampling info for 1HNA008
+📐 Using original transformation:
+   Original shape: (131, 392, 590)
+   Latent shape: (32, 128, 128)
+   Scale factors: (4.09375, 3.0625, 4.609375)
+   Original spacing: (1.0, 1.0, 1.0)
+🔄 Upscaled: (32, 128, 128) → (131, 392, 590)
+💾 Saved: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA008_upscaled.npz
+💾 Saved with proper spacing: results/hn_mr_to_ct_bs4/test_latest_npz/1HNA008_upscaled.mha
+✅ Upscaled: 1HNA008_synthetic_ct.npz
+
+🎉 Pipeline completed successfully!
+
+📁 Results available in:
+   - Synthetic CT: results/hn_mr_to_ct_bs4/test_latest_npz
+   - Upscaled CT: results/hn_mr_to_ct_bs4/test_latest_npz/*_upscaled.*
+
+💡 Next steps:
+   - Review upscaled CT quality
+   - Compare with ground truth if available
+   - Adjust upscaling method if needed (--method sitk)

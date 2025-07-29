@@ -1,0 +1,45 @@
+
+Filesystems usage for user sawall ( uid 646284814 ):
+-------------------------------------------------------------------------------------
+Directory                           Used   Limit   Used,%         Files     Limit
+-------------------------------------------------------------------------------------
+/home/sawall                       2.8GB    15GB    18.4%        19,922   100,000
+/data/sawall                       132GB   200GB    65.7%     1,094,812          
+/scratch/sawall                    102GB    20TB     0.5%         4,673          
+
+/shares/tanadini-lang.physik.uzh      0B    10TB     0.0%             2          
+-------------------------------------------------------------------------------------
+
+Files on /scratch may be purged after 30 days.
+See https://docs.s3it.uzh.ch/cluster/data
+
+🚀 4-Channel Latent MR Testing Pipeline
+======================================
+Data directory: /home/sawall/scratch/latent_data/test
+Model name: hn_mr_to_ct_bs4
+Epoch: latest
+GPU IDs: 0
+Upscaling method: scipy
+
+📋 Step 1: Creating crops.pkl with downsampling information...
+🔍 Found 4 latent MR files
+   📊 Using CT spacing info from 1HNA001_ct.mha
+✅ 1HNA001: Added downsampling info from CT
+   Scale factors: (3.6875, 3.046875, 4.1640625)
+   Using CT spacing: 1HNA001_ct.mha
+   📊 Using CT spacing info from 1HNA004_ct.mha
+✅ 1HNA004: Added downsampling info from CT
+   Scale factors: (3.40625, 2.984375, 3.8984375)
+   Using CT spacing: 1HNA004_ct.mha
+   📊 Using CT spacing info from 1HNA006_ct.mha
+✅ 1HNA006: Added downsampling info from CT
+   Scale factors: (3.5, 2.78125, 4.1328125)
+   Using CT spacing: 1HNA006_ct.mha
+   📊 Using CT spacing info from 1HNA008_ct.mha
+✅ 1HNA008: Added downsampling info from CT
+   Scale factors: (4.09375, 3.0625, 4.609375)
+   Using CT spacing: 1HNA008_ct.mha
+
+✅ Created /home/sawall/scratch/latent_data/test/crops.pkl
+📊 4 test samples ready
+💡 Compatible with launch_4channel_training.py --phase test
