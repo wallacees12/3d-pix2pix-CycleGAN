@@ -341,8 +341,14 @@ def main():
             custom_args['use_perceptual_loss'] = True
             i += 1
         else:
+            # Pass through all other arguments (including --batchSize)
             filtered_argv.append(arg)
-            i += 1
+            # If this argument has a value, add it too
+            if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith('--'):
+                filtered_argv.append(sys.argv[i + 1])
+                i += 2
+            else:
+                i += 1
     
     # Temporarily replace sys.argv for TrainOptions parsing
     original_argv = sys.argv
@@ -350,6 +356,9 @@ def main():
     
     # Parse training options with 4-channel specific additions
     opt = TrainOptions().parse()
+    
+    # Debug: Print the actual batch size being used
+    print(f"🔍 Debug: Parsed batch size = {opt.batchSize}")
     
     # Restore original sys.argv
     sys.argv = original_argv
@@ -436,8 +445,29 @@ def main():
         
         for i, data in enumerate(pbar):
             iter_start_time = time.time()
-            total_steps += opt.batchSize
-            epoch_iter += opt.batchSize
+            
+            # Debug: Print actual batch size being processed (only for first few iterations)
+            if i < 3:
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if hasattr(value, 'shape'):
+                            print(f"🔍 Debug batch {i}: {key} shape = {value.shape}")
+                            break
+                elif hasattr(data, 'shape'):
+                    print(f"🔍 Debug batch {i}: data shape = {data.shape}")
+            
+            # Update step counters (should use actual batch size from data)
+            actual_batch_size = 1  # Default fallback
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if hasattr(value, 'shape') and len(value.shape) > 0:
+                        actual_batch_size = value.shape[0]
+                        break
+            elif hasattr(data, 'shape') and len(data.shape) > 0:
+                actual_batch_size = data.shape[0]
+            
+            total_steps += actual_batch_size
+            epoch_iter += actual_batch_size
             
             # Set input and optimize
             model.set_input(data)
