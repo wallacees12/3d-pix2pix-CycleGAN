@@ -226,12 +226,6 @@ class UnetGenerator4Channel(nn.Module):
         )
 
     def forward(self, input):
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self._forward_impl, input, self.gpu_ids)
-        else:
-            return self._forward_impl(input)
-    
-    def _forward_impl(self, input):
         # Adapt 4-channel input
         adapted_input = self.input_adapter(input)
         
@@ -406,12 +400,6 @@ class DenseGenerator4Channel(nn.Module):
         )
 
     def forward(self, input):
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self._forward_impl, input, self.gpu_ids)
-        else:
-            return self._forward_impl(input)
-    
-    def _forward_impl(self, input):
         # Apply channel attention
         attended_input = self.channel_attention(input)
         
