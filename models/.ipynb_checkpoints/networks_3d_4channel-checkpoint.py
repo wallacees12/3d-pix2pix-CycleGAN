@@ -226,6 +226,12 @@ class UnetGenerator4Channel(nn.Module):
         )
 
     def forward(self, input):
+        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
+            return nn.parallel.data_parallel(self._forward_impl, input, self.gpu_ids)
+        else:
+            return self._forward_impl(input)
+    
+    def _forward_impl(self, input):
         # Adapt 4-channel input
         adapted_input = self.input_adapter(input)
         
@@ -234,11 +240,7 @@ class UnetGenerator4Channel(nn.Module):
         
         # Generate single-channel output
         output = self.output_layer(unet_output)
-        
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(lambda x: output, input, self.gpu_ids)
-        else:
-            return output
+        return output
 
 
 class UnetSkipConnectionBlock4Channel(nn.Module):
@@ -404,6 +406,12 @@ class DenseGenerator4Channel(nn.Module):
         )
 
     def forward(self, input):
+        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
+            return nn.parallel.data_parallel(self._forward_impl, input, self.gpu_ids)
+        else:
+            return self._forward_impl(input)
+    
+    def _forward_impl(self, input):
         # Apply channel attention
         attended_input = self.channel_attention(input)
         
@@ -414,11 +422,7 @@ class DenseGenerator4Channel(nn.Module):
         
         # Generate output
         output = self.output_proj(x3)
-        
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(lambda x: output, input, self.gpu_ids)
-        else:
-            return output
+        return output
 
 
 class ChannelAttention4Channel(nn.Module):
