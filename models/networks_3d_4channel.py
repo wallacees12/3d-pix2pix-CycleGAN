@@ -70,7 +70,7 @@ def define_G_4channel(input_nc=4, output_nc=1, ngf=64, which_model_netG='unet_4c
         netG = UnetGenerator4Channel(input_nc, output_nc, 5, ngf, 
                                    norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'unet_4channel_256':
-        netG = UnetGenerator4Channel(input_nc, output_nc, 8, ngf, 
+        netG = UnetGenerator4Channel(input_nc, output_nc, 6, ngf, 
                                    norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'resnet_4channel_9blocks':
         netG = ResnetGenerator4Channel(input_nc, output_nc, ngf, 
