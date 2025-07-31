@@ -3,6 +3,8 @@ datasets/
 checkpoints/
 results/
 build/
+test/
+checkpoints/
 dist/
 *.png
 torch.egg-info/

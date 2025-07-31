@@ -215,8 +215,8 @@ def main():
     print(f"   Model: {opt.name}")
     print(f"   Epoch: {opt.which_epoch}")
     print(f"   Data: {opt.dataroot}")
-    print(f"   GPU: {opt.gpu_ids}")
-    print(f"   Batch size: {opt.batchSize}")
+    print(f"   Device: {'GPU ' + str(opt.gpu_ids) if len(opt.gpu_ids) > 0 and torch.cuda.is_available() else 'CPU'}")
+    print(f"   Batch size: {opt.batchSize} (will be forced to 1 for variable-sized data)")
     print(f"   Save format: {opt.save_type.upper()}")
     
     # Create test dataset using our FourChannelTestDataset
@@ -251,9 +251,16 @@ def main():
             origins = data['origin']  # Origin from original MR
             original_mrs = data['original_mr']  # Original MR data
             
-            # Move to GPU if available
-            if len(opt.gpu_ids) > 0:
+            # Move to GPU if available and requested
+            if len(opt.gpu_ids) > 0 and torch.cuda.is_available():
                 real_A = real_A.cuda()
+                # Ensure model is also on GPU
+                if not next(netG.parameters()).is_cuda:
+                    netG = netG.cuda()
+            else:
+                # Ensure model is on CPU
+                if next(netG.parameters()).is_cuda:
+                    netG = netG.cpu()
             
             # Generate synthetic CT
             fake_B = netG(real_A)
