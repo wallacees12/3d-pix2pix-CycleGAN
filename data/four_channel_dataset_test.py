@@ -309,13 +309,19 @@ class FourChannelTestDataLoaderWrapper:
     def __init__(self, opt):
         self.opt = opt
         self.dataset = FourChannelTestDataset(opt)
+        # Force batch_size=1 since original_mr samples have different shapes
+        # and cannot be batched together
         self.dataloader = DataLoader(
             self.dataset,
-            batch_size=opt.batchSize if hasattr(opt, 'batchSize') else 1,
+            batch_size=1,  # Must be 1 due to variable-sized original_mr data
             shuffle=False,  # Don't shuffle for test
             num_workers=1,  # Single worker for test
             drop_last=False  # Keep all samples
         )
+        
+        # Warn user if they specified a different batch size
+        if hasattr(opt, 'batchSize') and opt.batchSize != 1:
+            print(f"⚠️ Warning: Batch size forced to 1 (was {opt.batchSize}) due to variable-sized original MR data")
     
     def load_data(self):
         return self.dataloader
