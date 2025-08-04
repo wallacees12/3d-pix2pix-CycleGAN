@@ -1,40 +1,40 @@
 #!/usr/bin/env python3
 """
 4-Channel 3D Pix2Pix Training Script
-Trains a 4-channel input to 1-channel output model for MR latent → synthetic CT generation
+Trains a multi-channel input to multi-channel output model for latent translation
 
-This script is specifically designed to work with:
-- networks_3d_4channel.py (4→1 channel architectures)
-- 4-channel MR latent datasets (created by 4Channel_data.ipynb)
-- Enhanced training features for medical imaging
+This script supports:
+- MR latent → synthetic CT generation (4→1 channels)  
+- Latent-to-latent translation (4→4 channels)
+- Any custom channel configuration
 """
 
 import time
 import os
 import torch
-from options.train_options import TrainOptions
+from options.four_channel_train_options import FourChannelTrainOptions
 from data.data_loader import CreateDataLoader
 import numpy as np
 from tqdm import tqdm
 
 def create_4channel_model(opt):
-    """Create 4-channel model using our custom networks"""
-    # Import our 4-channel networks
+    """Create multi-channel model using our custom networks"""
+    # Import our multi-channel networks
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
     
     try:
         from models.networks_3d_4channel import define_G_4channel, define_D_4channel, GANLoss
-        print("✅ Successfully imported 4-channel networks")
+        print("✅ Successfully imported multi-channel networks")
     except ImportError as e:
-        print(f"❌ Failed to import 4-channel networks: {e}")
+        print(f"❌ Failed to import multi-channel networks: {e}")
         print("   Make sure networks_3d_4channel.py is in the models/ directory")
         raise
     
-    # Create 4-channel generator (4 input channels → 1 output channel)
+    # Create multi-channel generator (configurable input_nc → output_nc)
     netG = define_G_4channel(
-        input_nc=4,                           # 4-channel MR latent input
-        output_nc=1,                          # Single-channel synthetic CT output
+        input_nc=opt.input_nc,               # Configurable input channels (default: 4)
+        output_nc=opt.output_nc,             # Configurable output channels (1 for CT, 4 for latent-to-latent)
         ngf=opt.ngf,                         # Number of generator filters
         which_model_netG=opt.which_model_netG, # Architecture type
         norm=opt.norm,                       # Normalization type
@@ -42,9 +42,9 @@ def create_4channel_model(opt):
         gpu_ids=opt.gpu_ids                  # GPU devices
     )
     
-    # Create discriminator for single-channel CT
+    # Create discriminator for output channels
     netD = define_D_4channel(
-        input_nc=opt.output_nc,              # Single-channel CT input to discriminator
+        input_nc=opt.output_nc,              # Discriminator input = generator output channels
         ndf=opt.ndf,                         # Number of discriminator filters
         which_model_netD=opt.which_model_netD, # Discriminator architecture
         n_layers_D=opt.n_layers_D,          # Number of discriminator layers
@@ -52,6 +52,10 @@ def create_4channel_model(opt):
         use_sigmoid=opt.no_lsgan,            # Sigmoid activation
         gpu_ids=opt.gpu_ids                  # GPU devices
     )
+    
+    print(f"🏗️ Created networks:")
+    print(f"   Generator: {opt.input_nc} → {opt.output_nc} channels")
+    print(f"   Discriminator: {opt.output_nc} channels input")
     
     # Create loss function
     criterionGAN = GANLoss(use_lsgan=not opt.no_lsgan, tensor=torch.cuda.FloatTensor if opt.gpu_ids else torch.FloatTensor)
@@ -209,70 +213,8 @@ def create_4channel_model(opt):
     return Pix2Pix4ChannelModel()
 
 def main():
-    # Custom argument parsing for 4-channel specific options
-    import argparse
-    import sys
-    
-    # Remove custom 4-channel arguments from sys.argv to avoid conflicts with TrainOptions
-    custom_args = {}
-    filtered_argv = [sys.argv[0]]  # Keep script name
-    
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg == '--lambda_L1':
-            custom_args['lambda_L1'] = float(sys.argv[i + 1])
-            i += 2  # Skip both argument and value
-        elif arg == '--use_4channel_dataset':
-            custom_args['use_4channel_dataset'] = True
-            i += 1  # Skip argument
-        else:
-            filtered_argv.append(arg)
-            i += 1
-    
-    # Temporarily replace sys.argv for TrainOptions parsing
-    original_argv = sys.argv
-    sys.argv = filtered_argv
-    
-    # Parse training options with 4-channel specific additions
-    opt = TrainOptions().parse()
-    
-    # Restore original sys.argv
-    sys.argv = original_argv
-    
-    # Add custom 4-channel options
-    opt.lambda_L1 = custom_args.get('lambda_L1', 100.0)
-    opt.use_4channel_dataset = custom_args.get('use_4channel_dataset', True)
-    
-    # Add missing options with defaults
-    if not hasattr(opt, 'print_freq'):
-        opt.print_freq = 100
-    
-    # Override some options for 4-channel training
-    opt.input_nc = 4   # 4-channel input
-    opt.output_nc = 1  # 1-channel output
-    opt.dataset_mode = 'four_channel'  # Use our 4-channel dataset loader
-    
-    # Set default 4-channel architecture if not specified or convert from 3-channel models
-    if not hasattr(opt, 'which_model_netG') or opt.which_model_netG in ['unet_128', 'unet_256']:
-        opt.which_model_netG = 'unet_4channel_128'  # Use our 4-channel UNet
-        print(f"🔧 Using 4-channel architecture: {opt.which_model_netG}")
-    elif opt.which_model_netG == 'resnet_9blocks':
-        opt.which_model_netG = 'resnet_4channel_9blocks'  # Convert to 4-channel ResNet
-        print(f"🔧 Converted to 4-channel architecture: {opt.which_model_netG}")
-    elif opt.which_model_netG == 'resnet_6blocks':
-        opt.which_model_netG = 'resnet_4channel_6blocks'  # Convert to 4-channel ResNet
-        print(f"🔧 Converted to 4-channel architecture: {opt.which_model_netG}")
-    elif opt.which_model_netG not in ['unet_4channel_128', 'unet_4channel_256', 'resnet_4channel_6blocks', 'resnet_4channel_9blocks', 'dense_4channel']:
-        print(f"⚠️  Unknown model '{opt.which_model_netG}', defaulting to unet_4channel_128")
-        opt.which_model_netG = 'unet_4channel_128'
-    
-    print(f"🔧 4-Channel Training Configuration:")
-    print(f"   📊 Input channels: {opt.input_nc}")
-    print(f"   📊 Output channels: {opt.output_nc}")
-    print(f"   🏗️ Generator: {opt.which_model_netG}")
-    print(f"   📁 Dataset mode: {opt.dataset_mode}")
-    print(f"   ⚖️ L1 loss weight: {opt.lambda_L1}")
+    # Parse training options using 4-channel specific options
+    opt = FourChannelTrainOptions().parse()
     
     # Create dataset
     data_loader = CreateDataLoader(opt)
@@ -281,20 +223,21 @@ def main():
     print(f'📊 Dataset size: {dataset_size}')
     
     # Create model
-    print("🏗️ Creating 4-channel model...")
+    print("🏗️ Creating multi-channel model...")
     model = create_4channel_model(opt)
     
     # Training parameters
     total_steps = 0
     start_epoch = opt.epoch_count
     
-    print(f"🚀 Starting 4-channel training...")
+    print(f"🚀 Starting multi-channel training...")
     print(f"   Epochs: {start_epoch} to {opt.niter + opt.niter_decay}")
     print(f"   Batch size: {opt.batchSize}")
     print(f"   Learning rate: {opt.lr}")
     print(f"   Input channels: {opt.input_nc}")
     print(f"   Output channels: {opt.output_nc}")
     print(f"   Architecture: {opt.which_model_netG}")
+    print(f"   L1 weight: {opt.lambda_L1}")
     
     # Training loop
     for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
