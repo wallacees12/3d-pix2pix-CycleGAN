@@ -41,7 +41,6 @@ def get_norm_layer(norm_type='instance'):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-
 def define_G_4channel(input_nc=4, output_nc=1, ngf=64, which_model_netG='unet_4channel_128', 
                      norm='batch', use_dropout=False, gpu_ids=[]):
     """

@@ -1,154 +1,135 @@
 #!/usr/bin/env python3
 """
-Upscale Synthetic CT from NPZ files
-Upscales low-resolution synthetic CT to original MR dimensions using stored metadata
-Supports multiple interpolation methods and output formats
+Simple Upscaling Script for Synthetic CT
+Takes NPZ file with synthetic CT and original MR file path
+Uses SimpleITK resampling to match original MR dimensions exactly
 """
 
 import os
 import argparse
 import numpy as np
-import torch
-import torch.nn.functional as F
 import SimpleITK as sitk
-from scipy import ndimage
 from tqdm import tqdm
 import time
 
-def load_npz_data(npz_path):
+def load_original_mr(mr_file_path):
     """
-    Load NPZ file and extract all necessary data
+    Load original MR file and extract metadata
     
     Args:
-        npz_path: Path to NPZ file containing synthetic CT and metadata
+        mr_file_path: Path to original MR file (.mha, .nii, .nii.gz)
     
     Returns:
-        dict with keys: fake_B, target_shape, spacing, origin, sample_name, etc.
+        dict with spacing, origin, size, and direction
+    """
+    if not os.path.exists(mr_file_path):
+        raise FileNotFoundError(f"Original MR file not found: {mr_file_path}")
+    
+    print(f"📂 Loading original MR: {os.path.basename(mr_file_path)}")
+    
+    # Load MR image
+    mr_image = sitk.ReadImage(mr_file_path)
+    
+    # Extract metadata
+    metadata = {
+        'spacing': mr_image.GetSpacing(),  # (x, y, z)
+        'origin': mr_image.GetOrigin(),    # (x, y, z)
+        'size': mr_image.GetSize(),        # (x, y, z)
+        'direction': mr_image.GetDirection()
+    }
+    
+    # Convert size to numpy format (z, y, x) for consistency with numpy arrays
+    target_shape = (metadata['size'][2], metadata['size'][1], metadata['size'][0])
+    
+    print(f"   Size: {metadata['size']} (x,y,z)")
+    print(f"   Target shape: {target_shape} (z,y,x)")
+    print(f"   Spacing: {metadata['spacing']} (x,y,z)")
+    print(f"   Origin: {metadata['origin']} (x,y,z)")
+    
+    return metadata, target_shape
+
+def load_synthetic_ct(npz_path):
+    """
+    Load synthetic CT from NPZ file
+    
+    Args:
+        npz_path: Path to NPZ file containing synthetic CT
+    
+    Returns:
+        tuple: (synthetic_ct_array, sample_name)
     """
     if not os.path.exists(npz_path):
         raise FileNotFoundError(f"NPZ file not found: {npz_path}")
     
     data = np.load(npz_path, allow_pickle=True)
     
-    # Extract required data
-    result = {
-        'fake_B': data['fake_B'],  # Synthetic CT [D_low, H_low, W_low]
-        'target_shape': data['target_shape'],  # Target dimensions [D_high, H_high, W_high]
-        'sample_name': str(data['sample_name']) if 'sample_name' in data else 'unknown',
-        'latent_shape': data.get('latent_shape', data['fake_B'].shape),
-    }
-    
-    # Optional metadata
-    if 'spacing' in data:
-        result['spacing'] = tuple(data['spacing'])
+    # Get synthetic CT data
+    if 'fake_B' in data:
+        synthetic_ct = data['fake_B']
+    elif 'synthetic_ct' in data:
+        synthetic_ct = data['synthetic_ct']
     else:
-        result['spacing'] = (1.0, 1.0, 1.0)  # Default 1mm spacing
+        # Try first available array
+        available_keys = [k for k in data.keys() if isinstance(data[k], np.ndarray) and data[k].ndim == 3]
+        if not available_keys:
+            raise ValueError(f"No 3D array found in NPZ file: {list(data.keys())}")
+        synthetic_ct = data[available_keys[0]]
+        print(f"⚠️ Using key '{available_keys[0]}' as synthetic CT")
     
-    if 'origin' in data:
-        result['origin'] = tuple(data['origin'])
-    else:
-        result['origin'] = (0.0, 0.0, 0.0)  # Default origin
+    # Get sample name
+    sample_name = str(data.get('sample_name', 'unknown'))
     
-    if 'original_mr' in data:
-        result['original_mr'] = data['original_mr']
+    print(f"📂 Loaded synthetic CT: {os.path.basename(npz_path)}")
+    print(f"   Sample: {sample_name}")
+    print(f"   Shape: {synthetic_ct.shape}")
+    print(f"   HU range: [{synthetic_ct.min():.1f}, {synthetic_ct.max():.1f}]")
     
-    # Calculate scale factors
-    target_shape = result['target_shape']
-    latent_shape = result['latent_shape']
-    
-    scale_factors = [target_shape[i] / latent_shape[i] for i in range(3)]
-    result['scale_factors'] = scale_factors
-    
-    print(f"📂 Loaded NPZ: {os.path.basename(npz_path)}")
-    print(f"   Sample: {result['sample_name']}")
-    print(f"   Latent shape: {latent_shape}")
-    print(f"   Target shape: {target_shape}")
-    print(f"   Scale factors (D,H,W): {scale_factors}")
-    print(f"   Spacing: {result['spacing']}")
-    print(f"   Origin: {result['origin']}")
-    
-    return result
+    return synthetic_ct, sample_name
 
-def upscale_trilinear_torch(volume, target_shape, device='cpu'):
+def upscale_with_sitk(synthetic_ct, mr_metadata, target_shape, interpolation='linear'):
     """
-    Upscale volume using PyTorch trilinear interpolation
+    Upscale synthetic CT using SimpleITK to match original MR exactly
     
     Args:
-        volume: Input volume [D, H, W]
-        target_shape: Target dimensions [D_target, H_target, W_target]
-        device: 'cpu' or 'cuda'
+        synthetic_ct: Input synthetic CT volume [D, H, W]
+        mr_metadata: Metadata from original MR (spacing, origin, direction)
+        target_shape: Target dimensions (D, H, W)
+        interpolation: Interpolation method
     
     Returns:
-        Upscaled volume as numpy array
+        Upscaled synthetic CT volume
     """
-    # Convert to torch tensor and add batch and channel dimensions
-    volume_tensor = torch.from_numpy(volume).float().unsqueeze(0).unsqueeze(0)  # [1, 1, D, H, W]
+    print(f"🔧 Upscaling using SimpleITK resampling...")
+    print(f"   From: {synthetic_ct.shape} → To: {target_shape}")
     
-    # Move to device
-    volume_tensor = volume_tensor.to(device)
+    # Convert synthetic CT to SimpleITK image
+    synthetic_image = sitk.GetImageFromArray(synthetic_ct)
     
-    # Perform trilinear interpolation
-    upscaled_tensor = F.interpolate(
-        volume_tensor,
-        size=target_shape,
-        mode='trilinear',
-        align_corners=False
-    )
+    # Calculate spacing for the synthetic CT
+    # Assume the synthetic CT has isotropic spacing that scales with the size difference
+    scale_factors = [target_shape[i] / synthetic_ct.shape[i] for i in range(3)]
     
-    # Move back to CPU and convert to numpy
-    upscaled_volume = upscaled_tensor.squeeze(0).squeeze(0).cpu().numpy()
+    # Set spacing for synthetic image (convert from z,y,x to x,y,z for SimpleITK)
+    synthetic_spacing = [
+        mr_metadata['spacing'][0] * scale_factors[2],  # x spacing
+        mr_metadata['spacing'][1] * scale_factors[1],  # y spacing
+        mr_metadata['spacing'][2] * scale_factors[0]   # z spacing
+    ]
     
-    return upscaled_volume
-
-def upscale_scipy_zoom(volume, scale_factors, order=1):
-    """
-    Upscale volume using scipy zoom (spline interpolation)
+    synthetic_image.SetSpacing(synthetic_spacing)
+    synthetic_image.SetOrigin(mr_metadata['origin'])
+    synthetic_image.SetDirection(mr_metadata['direction'])
     
-    Args:
-        volume: Input volume [D, H, W]
-        scale_factors: Scale factors for each dimension [scale_d, scale_h, scale_w]
-        order: Interpolation order (0=nearest, 1=linear, 3=cubic)
+    print(f"   Synthetic spacing: {synthetic_spacing} (x,y,z)")
+    print(f"   Target spacing: {mr_metadata['spacing']} (x,y,z)")
+    print(f"   Scale factors: {[f'{f:.3f}' for f in scale_factors]} (z,y,x)")
     
-    Returns:
-        Upscaled volume as numpy array
-    """
-    upscaled_volume = ndimage.zoom(volume, scale_factors, order=order)
-    return upscaled_volume
-
-def upscale_sitk_resample(volume, target_shape, spacing, origin, interpolation='linear'):
-    """
-    Upscale volume using SimpleITK resampling with proper medical image handling
-    
-    Args:
-        volume: Input volume [D, H, W]
-        target_shape: Target dimensions [D_target, H_target, W_target]
-        spacing: Voxel spacing (z, y, x)
-        origin: Image origin (z, y, x)
-        interpolation: 'linear', 'nearest', 'bspline', or 'gaussian'
-    
-    Returns:
-        Upscaled volume as numpy array
-    """
-    # Convert numpy array to SimpleITK image
-    image = sitk.GetImageFromArray(volume)
-    
-    # Calculate input spacing (assuming the latent image has isotropic spacing derived from scale factors)
-    input_shape = volume.shape
-    # Calculate spacing for the latent image based on target spacing and scale factors
-    scale_factors = [target_shape[i] / input_shape[i] for i in range(3)]
-    input_spacing = [spacing[i] * scale_factors[i] for i in range(3)]
-    
-    # Set input image properties
-    # Convert from (z, y, x) to (x, y, z) for SimpleITK
-    image.SetSpacing([input_spacing[2], input_spacing[1], input_spacing[0]])
-    image.SetOrigin([origin[2], origin[1], origin[0]])
-    
-    # Set up the resampling
+    # Set up resampling to match original MR exactly
     resampler = sitk.ResampleImageFilter()
-    resampler.SetOutputSpacing([spacing[2], spacing[1], spacing[0]])  # Convert to (x, y, z)
-    resampler.SetSize([target_shape[2], target_shape[1], target_shape[0]])  # Convert to (x, y, z)
-    resampler.SetOutputOrigin([origin[2], origin[1], origin[0]])  # Convert to (x, y, z)
-    resampler.SetOutputDirection(image.GetDirection())
+    resampler.SetOutputSpacing(mr_metadata['spacing'])
+    resampler.SetSize(mr_metadata['size'])  # (x, y, z)
+    resampler.SetOutputOrigin(mr_metadata['origin'])
+    resampler.SetOutputDirection(mr_metadata['direction'])
     
     # Set interpolation method
     if interpolation.lower() == 'nearest':
@@ -157,215 +138,140 @@ def upscale_sitk_resample(volume, target_shape, spacing, origin, interpolation='
         resampler.SetInterpolator(sitk.sitkLinear)
     elif interpolation.lower() == 'bspline':
         resampler.SetInterpolator(sitk.sitkBSpline)
-    elif interpolation.lower() == 'gaussian':
-        resampler.SetInterpolator(sitk.sitkGaussian)
     else:
-        print(f"⚠️ Unknown interpolation method '{interpolation}', using linear")
+        print(f"⚠️ Unknown interpolation '{interpolation}', using linear")
         resampler.SetInterpolator(sitk.sitkLinear)
     
     # Perform resampling
-    upscaled_image = resampler.Execute(image)
+    start_time = time.time()
+    upscaled_image = resampler.Execute(synthetic_image)
+    upscale_time = time.time() - start_time
+    
+    print(f"⏱️ Resampling completed in {upscale_time:.2f} seconds")
     
     # Convert back to numpy array
     upscaled_volume = sitk.GetArrayFromImage(upscaled_image)
     
     return upscaled_volume
 
-def save_upscaled_result(upscaled_ct, sample_name, spacing, origin, output_dir, 
-                        save_format='mha', include_metadata=True):
+def save_upscaled_ct(upscaled_ct, sample_name, mr_metadata, output_dir, save_format='mha'):
     """
-    Save upscaled synthetic CT
+    Save upscaled synthetic CT with original MR metadata
     
     Args:
-        upscaled_ct: Upscaled CT volume [D, H, W]
+        upscaled_ct: Upscaled CT volume
         sample_name: Patient identifier
-        spacing: Voxel spacing (z, y, x)
-        origin: Image origin (z, y, x)
+        mr_metadata: Original MR metadata
         output_dir: Output directory
-        save_format: 'mha', 'nii', or 'npz'
-        include_metadata: Whether to include spacing/origin in medical formats
+        save_format: Output format ('mha', 'nii', 'nii.gz')
     
     Returns:
         Path to saved file
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    if save_format.lower() == 'npz':
-        # Save as NPZ for further processing
-        output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.npz")
-        np.savez_compressed(output_file,
-                           upscaled_ct=upscaled_ct,
-                           spacing=np.array(spacing),
-                           origin=np.array(origin),
-                           sample_name=sample_name,
-                           shape=np.array(upscaled_ct.shape))
-        
-    elif save_format.lower() in ['mha', 'nii', 'nii.gz']:
-        # Save as medical image format
-        if save_format.lower() == 'mha':
-            output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.mha")
-        elif save_format.lower() == 'nii':
-            output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.nii")
-        else:  # nii.gz
-            output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.nii.gz")
-        
-        # Convert to SimpleITK image
-        image = sitk.GetImageFromArray(upscaled_ct)
-        
-        if include_metadata:
-            # Set spacing and origin (convert from D,H,W to x,y,z)
-            image.SetSpacing([spacing[2], spacing[1], spacing[0]])
-            image.SetOrigin([origin[2], origin[1], origin[0]])
-        
-        # Write the image
-        sitk.WriteImage(image, output_file)
-    
+    # Determine output filename
+    if save_format.lower() == 'mha':
+        output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.mha")
+    elif save_format.lower() == 'nii':
+        output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.nii")
+    elif save_format.lower() == 'nii.gz':
+        output_file = os.path.join(output_dir, f"{sample_name}_upscaled_ct.nii.gz")
     else:
-        raise ValueError(f"Unsupported save format: {save_format}")
+        raise ValueError(f"Unsupported format: {save_format}")
+    
+    # Convert to SimpleITK image with original MR metadata
+    upscaled_image = sitk.GetImageFromArray(upscaled_ct)
+    upscaled_image.SetSpacing(mr_metadata['spacing'])
+    upscaled_image.SetOrigin(mr_metadata['origin'])
+    upscaled_image.SetDirection(mr_metadata['direction'])
+    
+    # Save the image
+    sitk.WriteImage(upscaled_image, output_file)
     
     print(f"💾 Saved upscaled CT: {output_file}")
     print(f"   Shape: {upscaled_ct.shape}")
     print(f"   HU range: [{upscaled_ct.min():.1f}, {upscaled_ct.max():.1f}]")
+    print(f"   Spacing: {mr_metadata['spacing']} (x,y,z)")
+    print(f"   Origin: {mr_metadata['origin']} (x,y,z)")
     
     return output_file
 
-def upscale_npz_file(npz_path, output_dir, method='trilinear', device='cpu', 
-                    save_format='mha', interpolation_order=1):
+def process_file(npz_path, mr_path, output_dir, save_format='mha', interpolation='linear'):
     """
-    Process a single NPZ file
+    Process a single NPZ file with its corresponding MR file
     
     Args:
-        npz_path: Path to input NPZ file
+        npz_path: Path to NPZ file with synthetic CT
+        mr_path: Path to original MR file
         output_dir: Output directory
-        method: Upscaling method ('trilinear', 'scipy', 'sitk')
-        device: 'cpu' or 'cuda' for torch methods
-        save_format: Output format ('mha', 'nii', 'npz')
-        interpolation_order: Order for scipy interpolation
+        save_format: Output format
+        interpolation: Interpolation method
     
     Returns:
         Path to output file
     """
-    # Load NPZ data
-    data = load_npz_data(npz_path)
+    # Load original MR metadata
+    mr_metadata, target_shape = load_original_mr(mr_path)
     
-    synthetic_ct = data['fake_B']
-    target_shape = data['target_shape']
-    scale_factors = data['scale_factors']
-    spacing = data['spacing']
-    origin = data['origin']
-    sample_name = data['sample_name']
+    # Load synthetic CT
+    synthetic_ct, sample_name = load_synthetic_ct(npz_path)
     
-    print(f"\n🔧 Upscaling using {method} method...")
-    start_time = time.time()
+    # Upscale synthetic CT
+    upscaled_ct = upscale_with_sitk(synthetic_ct, mr_metadata, target_shape, interpolation)
     
-    # Perform upscaling based on method
-    if method.lower() == 'trilinear':
-        upscaled_ct = upscale_trilinear_torch(synthetic_ct, target_shape, device)
-        
-    elif method.lower() == 'scipy':
-        upscaled_ct = upscale_scipy_zoom(synthetic_ct, scale_factors, order=interpolation_order)
-        
-    elif method.lower() == 'sitk':
-        upscaled_ct = upscale_sitk_resample(synthetic_ct, target_shape, spacing, origin, 
-                                          interpolation='linear')
-    else:
-        raise ValueError(f"Unknown upscaling method: {method}")
-    
-    upscale_time = time.time() - start_time
-    print(f"⏱️ Upscaling completed in {upscale_time:.2f} seconds")
-    
-    # Verify target shape
-    if tuple(upscaled_ct.shape) != tuple(target_shape):
-        print(f"⚠️ Warning: Output shape {upscaled_ct.shape} doesn't match target {target_shape}")
+    # Verify shape
+    expected_shape = (mr_metadata['size'][2], mr_metadata['size'][1], mr_metadata['size'][0])
+    if upscaled_ct.shape != expected_shape:
+        print(f"⚠️ Warning: Output shape {upscaled_ct.shape} doesn't match expected {expected_shape}")
     
     # Save result
-    output_file = save_upscaled_result(upscaled_ct, sample_name, spacing, origin, 
-                                     output_dir, save_format)
+    output_file = save_upscaled_ct(upscaled_ct, sample_name, mr_metadata, output_dir, save_format)
     
     return output_file
 
 def main():
-    parser = argparse.ArgumentParser(description='Upscale synthetic CT from NPZ files')
-    parser.add_argument('--input', '-i', type=str, required=True,
-                       help='Input NPZ file or directory containing NPZ files')
+    parser = argparse.ArgumentParser(description='Upscale synthetic CT using original MR metadata')
+    parser.add_argument('--npz', '-n', type=str, required=True,
+                       help='NPZ file containing synthetic CT')
+    parser.add_argument('--mr', '-m', type=str, required=True,
+                       help='Original MR file (.mha, .nii, .nii.gz)')
     parser.add_argument('--output', '-o', type=str, required=True,
-                       help='Output directory for upscaled results')
-    parser.add_argument('--method', '-m', type=str, default='trilinear',
-                       choices=['trilinear', 'scipy', 'sitk'],
-                       help='Upscaling method (default: trilinear)')
-    parser.add_argument('--device', type=str, default='cpu',
-                       choices=['cpu', 'cuda'],
-                       help='Device for torch operations (default: cpu)')
+                       help='Output directory')
     parser.add_argument('--format', '-f', type=str, default='mha',
-                       choices=['mha', 'nii', 'nii.gz', 'npz'],
+                       choices=['mha', 'nii', 'nii.gz'],
                        help='Output format (default: mha)')
-    parser.add_argument('--order', type=int, default=1,
-                       choices=[0, 1, 2, 3],
-                       help='Interpolation order for scipy method (0=nearest, 1=linear, 3=cubic)')
-    parser.add_argument('--batch', action='store_true',
-                       help='Process all NPZ files in input directory')
+    parser.add_argument('--interpolation', '-i', type=str, default='linear',
+                       choices=['linear', 'nearest', 'bspline'],
+                       help='Interpolation method (default: linear)')
     
     args = parser.parse_args()
     
-    print("🚀 Synthetic CT Upscaling Tool")
-    print(f"   Method: {args.method}")
-    print(f"   Device: {args.device}")
-    print(f"   Output format: {args.format}")
-    print(f"   Interpolation order: {args.order} (scipy only)")
+    print("🚀 Simple Synthetic CT Upscaling")
+    print(f"   NPZ file: {args.npz}")
+    print(f"   MR file: {args.mr}")
+    print(f"   Output: {args.output}")
+    print(f"   Format: {args.format}")
+    print(f"   Interpolation: {args.interpolation}")
+    print("-" * 50)
     
-    # Check CUDA availability
-    if args.device == 'cuda' and not torch.cuda.is_available():
-        print("⚠️ CUDA not available, falling back to CPU")
-        args.device = 'cpu'
-    
-    # Determine input files
-    if os.path.isfile(args.input):
-        if not args.input.endswith('.npz'):
-            raise ValueError("Input file must be an NPZ file")
-        npz_files = [args.input]
+    try:
+        output_file = process_file(
+            npz_path=args.npz,
+            mr_path=args.mr,
+            output_dir=args.output,
+            save_format=args.format,
+            interpolation=args.interpolation
+        )
         
-    elif os.path.isdir(args.input):
-        if not args.batch:
-            raise ValueError("Use --batch flag to process directory")
-        npz_files = [os.path.join(args.input, f) for f in os.listdir(args.input) 
-                    if f.endswith('.npz') and 'synthetic_ct' in f]
-        if not npz_files:
-            raise ValueError(f"No synthetic CT NPZ files found in {args.input}")
-    else:
-        raise ValueError(f"Input path does not exist: {args.input}")
-    
-    print(f"📁 Found {len(npz_files)} NPZ file(s) to process")
-    
-    # Process files
-    total_start_time = time.time()
-    
-    for i, npz_file in enumerate(tqdm(npz_files, desc="Processing files")):
-        print(f"\n📋 Processing {i+1}/{len(npz_files)}: {os.path.basename(npz_file)}")
+        print(f"\n✅ Success!")
+        print(f"📁 Upscaled CT saved: {output_file}")
         
-        try:
-            output_file = upscale_npz_file(
-                npz_path=npz_file,
-                output_dir=args.output,
-                method=args.method,
-                device=args.device,
-                save_format=args.format,
-                interpolation_order=args.order
-            )
-            
-        except Exception as e:
-            print(f"❌ Error processing {npz_file}: {e}")
-            continue
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        return 1
     
-    total_time = time.time() - total_start_time
-    print(f"\n✅ Upscaling completed!")
-    print(f"⏱️ Total time: {total_time:.2f} seconds")
-    print(f"📁 Results saved in: {args.output}")
-    
-    print(f"\n🔧 Usage examples:")
-    print(f"   Single file: python upscale_synthetic_ct.py -i result.npz -o ./upscaled/")
-    print(f"   Batch mode:  python upscale_synthetic_ct.py -i ./results/ -o ./upscaled/ --batch")
-    print(f"   GPU mode:    python upscale_synthetic_ct.py -i result.npz -o ./upscaled/ --device cuda")
-    print(f"   NIfTI out:   python upscale_synthetic_ct.py -i result.npz -o ./upscaled/ -f nii.gz")
+    return 0
 
 if __name__ == '__main__':
-    main()
+    exit(main())
