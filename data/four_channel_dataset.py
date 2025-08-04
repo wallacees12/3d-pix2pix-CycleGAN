@@ -95,7 +95,7 @@ class FourChannelDataset(Dataset):
 
     
 
-    def extract_patient_id(filename):
+    def extract_patient_id(self,filename):
         # Get the filename without extension
         base = os.path.splitext(filename)[0]
         # Match the patient ID: first part of the filename (e.g. "1HNA001")
