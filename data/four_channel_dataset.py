@@ -6,6 +6,7 @@ Specifically designed to load 4-channel MR latent → 1-channel CT datasets
 import os
 import numpy as np
 import pickle
+import re
 import torch
 from torch.utils.data import Dataset
 import random
@@ -54,10 +55,9 @@ class FourChannelDataset(Dataset):
         for mr_file in sorted(mr_files):
             # Extract patient name (remove .npz extension)
             patient_name = os.path.splitext(mr_file)[0]
-            
             # Show exact filenames being checked
-            patient_id = os.path.splitext(mr_file)[0].replace("_latent_mr", "")
-            expected_ct = f"{patient_id}_latent_ct.npz"
+            patient_id = self.extract_patient_id(mr_file)
+            expected_ct = f"{patient_id}_ct.npz"
             
             
             # Check exact match
@@ -92,6 +92,18 @@ class FourChannelDataset(Dataset):
     def name(self):
         """Return dataset name"""
         return 'FourChannelDataset'
+
+    
+
+    def extract_patient_id(filename):
+        # Get the filename without extension
+        base = os.path.splitext(filename)[0]
+        # Match the patient ID: first part of the filename (e.g. "1HNA001")
+        match = re.match(r'^([0-9A-Z]+)', base)
+        if match:
+            return match.group(1)
+        else:
+            raise ValueError(f"Could not extract patient ID from: {filename}")
     
     def initialize(self, opt):
         """Initialize method for compatibility with base dataset interface"""
