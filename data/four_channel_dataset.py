@@ -146,16 +146,45 @@ class FourChannelDataset(Dataset):
             # For test datasets without ground truth CT
             ct_data = None
         
-        # Handle channel dimensions
+        # Handle channel dimensions - ensure consistent [C, D, H, W] format
         if len(mr_data.shape) == 4:
-            # Already has channels [D, H, W, C] → [C, D, H, W]
-            # mr_data = np.transpose(mr_data, (3, 0, 1, 2))
+            # Check which dimension has 4 channels
+            channel_locations = [i for i, dim_size in enumerate(mr_data.shape) if dim_size == 4]
+            
+            if len(channel_locations) == 1:
+                channel_dim = channel_locations[0]
+                if channel_dim == 0:
+                    # Already in [C, D, H, W] format
+                    pass
+                elif channel_dim == 3:
+                    # Convert from [D, H, W, C] to [C, D, H, W]
+                    mr_data = np.transpose(mr_data, (3, 0, 1, 2))
+                    print(f"🔄 Transposed MR data from [D,H,W,C] to [C,D,H,W]: {mr_data.shape}")
+                elif channel_dim == 1:
+                    # Convert from [D, C, H, W] to [C, D, H, W]
+                    mr_data = np.transpose(mr_data, (1, 0, 2, 3))
+                    print(f"🔄 Transposed MR data from [D,C,H,W] to [C,D,H,W]: {mr_data.shape}")
+                elif channel_dim == 2:
+                    # Convert from [D, H, C, W] to [C, D, H, W]
+                    mr_data = np.transpose(mr_data, (2, 0, 1, 3))
+                    print(f"🔄 Transposed MR data from [D,H,C,W] to [C,D,H,W]: {mr_data.shape}")
+            elif len(channel_locations) == 0:
+                # No dimension has exactly 4 - this might be unexpected
+                print(f"⚠️ Warning: No dimension with 4 channels found. Shape: {mr_data.shape}")
+                print(f"   Assuming first dimension is channels")
+            else:
+                # Multiple dimensions have size 4 - ambiguous
+                print(f"⚠️ Warning: Multiple dimensions with size 4: {channel_locations}")
+                print(f"   Assuming dimension 0 is channels. Shape: {mr_data.shape}")
+            
+            # Final validation
             if mr_data.shape[0] != 4:
-                raise ValueError(f"Expected 4 MR channels, got {mr_data.shape[0]}")
+                raise ValueError(f"Expected 4 MR channels in first dimension, got shape {mr_data.shape}")
+                
         elif len(mr_data.shape) == 3:
             # Add channel dimension [D, H, W] → [1, D, H, W]
             mr_data = mr_data[np.newaxis, ...]
-            print(f"⚠️ Warning: Only single channel MR data available")
+            print(f"⚠️ Warning: Only single channel MR data available. Shape: {mr_data.shape}")
         
         # Ensure CT is single channel [D, H, W] → [1, D, H, W]
         if ct_data is not None:
