@@ -60,6 +60,7 @@ def create_4channel_model(opt):
     # Create loss function
     criterionGAN = GANLoss(use_lsgan=not opt.no_lsgan, tensor=torch.cuda.FloatTensor if opt.gpu_ids else torch.FloatTensor)
     criterionL1 = torch.nn.L1Loss()
+    criterionL2 = torch.nn.MSELoss()
     
     # Create custom model class
     class Pix2Pix4ChannelModel:
@@ -101,9 +102,7 @@ def create_4channel_model(opt):
                 # Custom 4-channel dataset format
                 data = input['data']
                 if data.shape[1] == 4:  # Check if we have 4 channels
-                    self.real_A = data      # 4-channel MR latent
-                    # For unpaired training, we'll need to handle this differently
-                    self.real_B = None
+                    self.real_A = data      # 4-channel MR latent                   
                 else:
                     print(f"⚠️ Warning: Expected 4 channels, got {data.shape[1]}")
                     self.real_A = data
