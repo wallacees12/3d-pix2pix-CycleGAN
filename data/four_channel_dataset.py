@@ -206,13 +206,51 @@ class FourChannelDataset(Dataset):
             if self.verbose:
                 print(f"⚠️ Warning: Only single channel MR data available. Shape: {mr_data.shape}")
         
-        # Ensure CT is single channel [D, H, W] → [1, D, H, W]
+        # Handle CT channel dimensions based on output_nc
         if ct_data is not None:
             if len(ct_data.shape) == 3:
-                ct_data = ct_data[np.newaxis, ...]
+                # Raw 3D data [D, H, W] - need to add channel dimension
+                if self.opt.output_nc == 4:
+                    # For latent-to-latent: assume CT data is also 4-channel but stored as [D, H, W, C]
+                    # This means your CT files should contain 4-channel latent data
+                    print(f"⚠️ Warning: CT data has 3D shape {ct_data.shape} but output_nc=4 expects 4-channel CT latents")
+                    print(f"   For true latent-to-latent training, CT data should be 4-channel latents, not single-channel CT images")
+                    print(f"   Converting to 1-channel for now, but this may not be what you want!")
+                    ct_data = ct_data[np.newaxis, ...]  # [1, D, H, W]
+                else:
+                    # For MR→CT: convert [D, H, W] → [1, D, H, W]
+                    ct_data = ct_data[np.newaxis, ...]
             elif len(ct_data.shape) == 4:
-                # Take first channel if multiple channels exist
-                ct_data = ct_data[0:1, ...]
+                # 4D data - check if it has the right number of channels
+                if self.opt.output_nc == 4:
+                    # For latent-to-latent: expect 4-channel CT latents
+                    if ct_data.shape[0] == 4:
+                        # Already in [C, D, H, W] format
+                        if self.verbose:
+                            print(f"✅ CT data already in [C,D,H,W] format: {ct_data.shape}")
+                        # ct_data is already [4, D, H, W] - perfect!
+                    elif ct_data.shape[3] == 4:
+                        # Convert from [D, H, W, C] to [C, D, H, W]
+                        ct_data = np.transpose(ct_data, (3, 0, 1, 2))
+                        if self.verbose:
+                            print(f"🔄 Transposed CT data from [D,H,W,C] to [C,D,H,W]: {ct_data.shape}")
+                    elif ct_data.shape[1] == 4:
+                        # Convert from [D, C, H, W] to [C, D, H, W]
+                        ct_data = np.transpose(ct_data, (1, 0, 2, 3))
+                        if self.verbose:
+                            print(f"🔄 Transposed CT data from [D,C,H,W] to [C,D,H,W]: {ct_data.shape}")
+                    elif ct_data.shape[2] == 4:
+                        # Convert from [D, H, C, W] to [C, D, H, W]
+                        ct_data = np.transpose(ct_data, (2, 0, 1, 3))
+                        if self.verbose:
+                            print(f"🔄 Transposed CT data from [D,H,C,W] to [C,D,H,W]: {ct_data.shape}")
+                    else:
+                        print(f"⚠️ Warning: Expected 4-channel CT data but got shape {ct_data.shape}")
+                        print(f"   No dimension has size 4. Using first channel only as fallback.")
+                        ct_data = ct_data[0:1, ...]  # Take first channel as fallback
+                else:
+                    # For MR→CT: take first channel if multiple channels exist
+                    ct_data = ct_data[0:1, ...]
         
         # Apply cropping if specified
         bounds = sample.get('bounds', None)
