@@ -13,42 +13,47 @@ class FourChannelTrainOptions(TrainOptions):
         # Initialize base options first
         super().initialize()
         
-        # Add only NEW 4-channel specific options (don't duplicate existing ones)
+        # Add ONLY new 4-channel specific options (don't override existing ones)
         self.parser.add_argument('--lambda_L1', type=float, default=100.0, 
                                help='weight for L1 loss (important for medical imaging)')
-        
-        # Custom dataset options
-        self.parser.add_argument('--use_4channel_dataset', action='store_true',
-                               help='use custom 4-channel dataset loader')
     
     def parse(self):
-        """Parse options and set 4-channel specific defaults"""
+        """Parse options and apply 4-channel specific logic"""
         opt = super().parse()
         
-        # Set 4-channel defaults for existing arguments
-        if not hasattr(opt, '_input_nc_set_by_user'):
-            opt.input_nc = 4  # Default to 4 channels for MR latent
-            
-        if not hasattr(opt, '_output_nc_set_by_user'):
-            opt.output_nc = 1  # Default to 1 channel for synthetic CT
-            
-        # Set sensible defaults for 4-channel architectures
-        if opt.which_model_netG in ['resnet_9blocks', 'resnet_6blocks', 'unet_128', 'unet_256']:
-            # Convert to 4-channel equivalent
-            arch_mapping = {
-                'resnet_9blocks': 'resnet_4channel_9blocks',
-                'resnet_6blocks': 'resnet_4channel_6blocks', 
-                'unet_128': 'unet_4channel_128',
-                'unet_256': 'unet_4channel_256'
-            }
-            opt.which_model_netG = arch_mapping.get(opt.which_model_netG, 'unet_4channel_256')
-            print(f"🔄 Auto-selected 4-channel architecture: {opt.which_model_netG}")
+        # Set intelligent defaults only if user didn't specify them
+        import sys
+        cmd_args = ' '.join(sys.argv[1:])
         
-        # Set dataset mode for 4-channel data
-        if opt.use_4channel_dataset or opt.input_nc == 4:
+        # Set dataset mode for 4-channel data (if not already set)
+        if '--dataset_mode' not in cmd_args:
             opt.dataset_mode = 'four_channel'
+        
+        # Convert standard architectures to 4-channel equivalents (if user used standard names)
+        if '--which_model_netG' not in cmd_args:
+            # User didn't specify, use 4-channel default
+            opt.which_model_netG = 'unet_4channel_128'
+        else:
+            # User specified - convert standard names to 4-channel equivalents
+            arch_conversion = {
+                'unet_128': 'unet_4channel_128',
+                'unet_256': 'unet_4channel_256',
+                'resnet_9blocks': 'resnet_4channel_9blocks',
+                'resnet_6blocks': 'resnet_4channel_6blocks'
+            }
+            if opt.which_model_netG in arch_conversion:
+                original_arch = opt.which_model_netG
+                opt.which_model_netG = arch_conversion[original_arch]
+                print(f"🔄 Converted architecture: {original_arch} → {opt.which_model_netG}")
+        
+        # Set sensible channel defaults only if user didn't specify them
+        if '--input_nc' not in cmd_args:
+            opt.input_nc = 4  # Default for 4-channel MR latent
             
-        # Print configuration
+        if '--output_nc' not in cmd_args:
+            opt.output_nc = 1  # Default for synthetic CT (user can override with --output_nc 4 for latent-to-latent)
+        
+        # Print final configuration
         print(f"\n🔧 4-Channel Configuration:")
         print(f"   Input channels: {opt.input_nc}")
         print(f"   Output channels: {opt.output_nc}")
