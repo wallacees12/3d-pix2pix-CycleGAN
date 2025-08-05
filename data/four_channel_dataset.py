@@ -93,6 +93,16 @@ class FourChannelDataset(Dataset):
         print(f"   Expected MR shape: (4, 256, 256)")
         print(f"   Expected CT shape: (256, 256)")
         print(f"   📝 Note: Data will be auto-transposed from [D,H,W,C] to [C,D,H,W] format")
+        
+        # Debug header
+        print("\n" + "="*80)
+        print("🐛 DEBUG: DATASET SAMPLE DIMENSIONS")
+        print("="*80)
+        print(f"{'Sample':<15} {'MR Raw Shape':<20} {'CT Raw Shape':<20} {'Final A Shape':<20} {'Final B Shape':<20}")
+        print("-"*80)
+        
+        # Track if we've printed debug info
+        self.debug_printed = False
     
     def name(self):
         """Return dataset name"""
@@ -139,6 +149,9 @@ class FourChannelDataset(Dataset):
         
         mr_data = np.load(mr_path, allow_pickle=True)['data']  # Shape: [D, H, W, C] or [D, H, W]
         
+        # Store original shapes for debug
+        mr_raw_shape = mr_data.shape
+        
         # Load CT data (1-channel) - only if CT path is provided
         ct_path = None
         if sample['ct_path'] is not None:
@@ -147,9 +160,11 @@ class FourChannelDataset(Dataset):
                 raise FileNotFoundError(f"CT file not found: {ct_path}")
             
             ct_data = np.load(ct_path, allow_pickle=True)['data']  # Shape: [D, H, W]
+            ct_raw_shape = ct_data.shape
         else:
             # For test datasets without ground truth CT
             ct_data = None
+            ct_raw_shape = "None"
         
         # Handle channel dimensions - ensure consistent [C, D, H, W] format
         if len(mr_data.shape) == 4:
@@ -164,18 +179,12 @@ class FourChannelDataset(Dataset):
                 elif channel_dim == 3:
                     # Convert from [D, H, W, C] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (3, 0, 1, 2))
-                    if self.verbose:
-                        print(f"🔄 Transposed MR data from [D,H,W,C] to [C,D,H,W]: {mr_data.shape}")
                 elif channel_dim == 1:
                     # Convert from [D, C, H, W] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (1, 0, 2, 3))
-                    if self.verbose:
-                        print(f"🔄 Transposed MR data from [D,C,H,W] to [C,D,H,W]: {mr_data.shape}")
                 elif channel_dim == 2:
                     # Convert from [D, H, C, W] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (2, 0, 1, 3))
-                    if self.verbose:
-                        print(f"🔄 Transposed MR data from [D,H,C,W] to [C,D,H,W]: {mr_data.shape}")
             elif len(channel_locations) == 0:
                 # No dimension has exactly 4 - this might be unexpected
                 if self.verbose:
@@ -231,6 +240,15 @@ class FourChannelDataset(Dataset):
             mr_tensor = self._normalize_tensor(mr_tensor)
             if ct_data is not None:
                 ct_tensor = self._normalize_tensor(ct_tensor)
+        
+        # Debug output for first few samples
+        if index < 5 or not self.debug_printed:
+            sample_name = sample['name'][:10] + "..." if len(sample['name']) > 10 else sample['name']
+            print(f"{sample_name:<15} {str(mr_raw_shape):<20} {str(ct_raw_shape):<20} {str(mr_tensor.shape):<20} {str(ct_tensor.shape):<20}")
+            if index >= 4:
+                self.debug_printed = True
+                print("-"*80)
+                print()
         
         return {
             'A': mr_tensor,           # 4-channel MR latent
