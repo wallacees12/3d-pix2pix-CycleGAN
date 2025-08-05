@@ -32,6 +32,9 @@ class FourChannelDataset(Dataset):
         self.opt = opt
         self.root = opt.dataroot
         
+        # Control verbosity - quiet during training to avoid spam
+        self.verbose = getattr(opt, 'verbose_dataset', False) or opt.phase != 'train'
+        
         # Set up folder paths for MR and CT
         self.mr_dir = os.path.join(self.root, "MR")
         self.ct_dir = os.path.join(self.root, "CT")
@@ -86,8 +89,10 @@ class FourChannelDataset(Dataset):
         print(f"   Phase: {getattr(opt, 'phase', 'train')}")
         print(f"   Samples: {len(self.samples)}")
         print(f"   Augmentation: {self.use_augmentation}")
+        print(f"   Verbose mode: {self.verbose}")
         print(f"   Expected MR shape: (4, 256, 256)")
         print(f"   Expected CT shape: (256, 256)")
+        print(f"   📝 Note: Data will be auto-transposed from [D,H,W,C] to [C,D,H,W] format")
     
     def name(self):
         """Return dataset name"""
@@ -159,23 +164,28 @@ class FourChannelDataset(Dataset):
                 elif channel_dim == 3:
                     # Convert from [D, H, W, C] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (3, 0, 1, 2))
-                    print(f"🔄 Transposed MR data from [D,H,W,C] to [C,D,H,W]: {mr_data.shape}")
+                    if self.verbose:
+                        print(f"🔄 Transposed MR data from [D,H,W,C] to [C,D,H,W]: {mr_data.shape}")
                 elif channel_dim == 1:
                     # Convert from [D, C, H, W] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (1, 0, 2, 3))
-                    print(f"🔄 Transposed MR data from [D,C,H,W] to [C,D,H,W]: {mr_data.shape}")
+                    if self.verbose:
+                        print(f"🔄 Transposed MR data from [D,C,H,W] to [C,D,H,W]: {mr_data.shape}")
                 elif channel_dim == 2:
                     # Convert from [D, H, C, W] to [C, D, H, W]
                     mr_data = np.transpose(mr_data, (2, 0, 1, 3))
-                    print(f"🔄 Transposed MR data from [D,H,C,W] to [C,D,H,W]: {mr_data.shape}")
+                    if self.verbose:
+                        print(f"🔄 Transposed MR data from [D,H,C,W] to [C,D,H,W]: {mr_data.shape}")
             elif len(channel_locations) == 0:
                 # No dimension has exactly 4 - this might be unexpected
-                print(f"⚠️ Warning: No dimension with 4 channels found. Shape: {mr_data.shape}")
-                print(f"   Assuming first dimension is channels")
+                if self.verbose:
+                    print(f"⚠️ Warning: No dimension with 4 channels found. Shape: {mr_data.shape}")
+                    print(f"   Assuming first dimension is channels")
             else:
                 # Multiple dimensions have size 4 - ambiguous
-                print(f"⚠️ Warning: Multiple dimensions with size 4: {channel_locations}")
-                print(f"   Assuming dimension 0 is channels. Shape: {mr_data.shape}")
+                if self.verbose:
+                    print(f"⚠️ Warning: Multiple dimensions with size 4: {channel_locations}")
+                    print(f"   Assuming dimension 0 is channels. Shape: {mr_data.shape}")
             
             # Final validation
             if mr_data.shape[0] != 4:
@@ -184,7 +194,8 @@ class FourChannelDataset(Dataset):
         elif len(mr_data.shape) == 3:
             # Add channel dimension [D, H, W] → [1, D, H, W]
             mr_data = mr_data[np.newaxis, ...]
-            print(f"⚠️ Warning: Only single channel MR data available. Shape: {mr_data.shape}")
+            if self.verbose:
+                print(f"⚠️ Warning: Only single channel MR data available. Shape: {mr_data.shape}")
         
         # Ensure CT is single channel [D, H, W] → [1, D, H, W]
         if ct_data is not None:
