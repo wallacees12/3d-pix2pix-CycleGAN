@@ -1,4 +1,7 @@
 debug*
+logs/
+test_set/
+logs_batch_4.out
 datasets/
 checkpoints/
 results/
