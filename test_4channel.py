@@ -43,8 +43,8 @@ def create_4channel_test_model(opt):
     
     # Create 4-channel generator
     netG = define_G_4channel(
-        input_nc=4,
-        output_nc=1,
+        input_nc=opt.input_nc,
+        output_nc=opt.output_nc,
         ngf=opt.ngf,
         which_model_netG=arch_name,
         norm=opt.norm,

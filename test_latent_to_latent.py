@@ -37,7 +37,8 @@ def create_latent_to_latent_test_model(opt):
         elif 'unet_256' in arch_name:
             arch_name = 'unet_4channel_256'
         else:
-            arch_name = 'unet_4channel_256'  # Default for latent-to-latent
+            # Keep the original if we don't know how to convert it
+            print(f"⚠️ Unknown architecture: {arch_name}, using as-is")
         
         print(f"🔄 Converted architecture: {opt.which_model_netG} → {arch_name}")
     
