@@ -5,7 +5,6 @@ logs_batch_4.out
 datasets/
 check_nii.py
 convert_nii_to_npz.py
-inference_4channel_latent.py
 inspect_ct_file.py
 run_inference.sh
 checkpoints/
