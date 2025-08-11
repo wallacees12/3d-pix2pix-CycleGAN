@@ -132,7 +132,7 @@ def normalize_ct_file(ct_path, target_shape=(32, 128, 128), hu_min=-1024, hu_max
     
     return metadata
 
-def process_ct_folder(input_dir, output_dir=None, target_shape=(32, 128, 128), 
+def process_ct_folder(input_dir, output_dir=None, target_shape=(64, 256, 256), 
                      hu_min=-1024, hu_max=1400, save_crops_pkl=True):
     """
     Process all CT.mha files in a folder
@@ -155,7 +155,7 @@ def process_ct_folder(input_dir, output_dir=None, target_shape=(32, 128, 128),
     print(f"🔍 Scanning {input_dir} for CT.mha files...")
     
     # Find all CT.mha files
-    ct_files = list(input_dir.rglob("ct.mha"))
+    ct_files = list(input_dir.rglob("ct.nii"))
     ct_files = [f for f in ct_files if f.is_file()]
     
     if not ct_files:
@@ -252,7 +252,7 @@ def main():
     parser = argparse.ArgumentParser(description='Normalize CT dataset using extended HU window')
     parser.add_argument('input_dir', help='Directory containing CT.mha files')
     parser.add_argument('--output_dir', help='Output directory (default: same as input)')
-    parser.add_argument('--target_shape', nargs=3, type=int, default=[32, 128, 128],
+    parser.add_argument('--target_shape', nargs=3, type=int, default=[64, 256, 256],
                        help='Target shape (D H W) (default: 32 128 128)')
     parser.add_argument('--hu_min', type=int, default=-1024,
                        help='Minimum HU value for windowing (default: -1024)')

@@ -95,9 +95,9 @@ def denormalize_ct(tensor):
     return tensor
 
 def save_synthetic_ct(synthetic_ct, sample_name, target_shape, real_A_sample, original_mr, 
-                     result_dir, save_type='npz', spacing=None, origin=None):
+                      result_dir, save_type='npz', spacing=None, origin=None):
     """
-    Save synthetic CT in specified format
+    Save synthetic CT in specified format, resampled to target shape if spacing is provided.
     
     Args:
         synthetic_ct: Generated CT data [D, H, W] in HU
@@ -113,81 +113,80 @@ def save_synthetic_ct(synthetic_ct, sample_name, target_shape, real_A_sample, or
     Returns:
         Path to saved file
     """
+    def resample_to_target_shape(volume_np, current_spacing, target_shape, interpolator=sitk.sitkLinear):
+        image = sitk.GetImageFromArray(volume_np)
+        image.SetSpacing([current_spacing[2], current_spacing[1], current_spacing[0]])
+
+        original_size = volume_np.shape  # (D, H, W)
+        new_spacing = [
+            original_size[2] * current_spacing[2] / target_shape[2],  # x
+            original_size[1] * current_spacing[1] / target_shape[1],  # y
+            original_size[0] * current_spacing[0] / target_shape[0],  # z
+        ]
+
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetOutputSpacing(new_spacing)
+        resampler.SetSize([int(s) for s in target_shape[::-1]])  # (W, H, D)
+        resampler.SetInterpolator(interpolator)
+        resampler.SetOutputOrigin(image.GetOrigin())
+        resampler.SetOutputDirection(image.GetDirection())
+
+        return sitk.GetArrayFromImage(resampler.Execute(image))
+
+    # Resample to target shape if both spacing and target_shape are provided
+    if spacing is not None and target_shape is not None:
+        print(f"🔁 Resampling synthetic CT from shape {synthetic_ct.shape} to target {target_shape}")
+        synthetic_ct = resample_to_target_shape(synthetic_ct, spacing, target_shape)
+
     if save_type == 'mha':
-        # Save as MHA medical image format
         output_file = os.path.join(result_dir, f"{sample_name}_synthetic_ct.mha")
-        
-        # Convert numpy array to SimpleITK image
+
         synthetic_ct_image = sitk.GetImageFromArray(synthetic_ct)
-        
-        # Set spacing from original MR if available, otherwise use default
+
+        # Set spacing (converted to x, y, z)
         if spacing is not None:
-            # Convert from (z, y, x) to (x, y, z) for SimpleITK
             sitk_spacing = [spacing[2], spacing[1], spacing[0]]
             synthetic_ct_image.SetSpacing(sitk_spacing)
-            print(f"   Using original MR spacing: {spacing} (D,H,W)")
-        else:
-            synthetic_ct_image.SetSpacing([1.0, 1.0, 1.0])  # Default 1mm spacing
-            print(f"   Using default spacing: [1.0, 1.0, 1.0]")
-        
-        # Set origin from original MR if available, otherwise use default
+            print(f"   ✅ Using spacing: {spacing} (D,H,W)")
+
+        # Set origin (converted to x, y, z)
         if origin is not None:
-            # Convert from (z, y, x) to (x, y, z) for SimpleITK
             sitk_origin = [origin[2], origin[1], origin[0]]
             synthetic_ct_image.SetOrigin(sitk_origin)
-            print(f"   Using original MR origin: {origin} (D,H,W)")
-        else:
-            synthetic_ct_image.SetOrigin([0.0, 0.0, 0.0])
-            print(f"   Using default origin: [0.0, 0.0, 0.0]")
-        
-        # Write the image
+            print(f"   ✅ Using origin: {origin} (D,H,W)")
+
         sitk.WriteImage(synthetic_ct_image, output_file)
-        
+
         print(f"💾 Saved MHA: {output_file}")
         print(f"   Sample: {sample_name}")
-        print(f"   Synthetic CT shape: {synthetic_ct.shape}")
+        print(f"   Shape: {synthetic_ct.shape}")
         print(f"   HU range: [{synthetic_ct.min():.1f}, {synthetic_ct.max():.1f}]")
-        
+
         return output_file
-        
-    else:  # npz format
-        # Save comprehensive NPZ with all data needed for upscaling and analysis
+
+    else:  # Save as NPZ
         output_file = os.path.join(result_dir, f"{sample_name}_synthetic_ct.npz")
-        
-        # Prepare save data dictionary
         save_data = {
-            'fake_B': synthetic_ct,                    # Generated synthetic CT [D_low, H_low, W_low] in HU
-            'real_A': real_A_sample[0],               # First channel of latent MR [D_low, H_low, W_low]
-            'target_shape': target_shape,             # Target dimensions [D_high, H_high, W_high] from original MR
-            'original_mr_shape': np.array(original_mr.shape) if original_mr.size > 1 else target_shape,  # Original MR shape for reference
-            'original_mr': original_mr,               # Full original MR data
-            'sample_name': sample_name,               # Patient name
-            'latent_shape': np.array(synthetic_ct.shape)  # Latent/synthetic CT shape
+            'fake_B': synthetic_ct,
+            'real_A': real_A_sample[0],
+            'target_shape': target_shape,
+            'original_mr_shape': np.array(original_mr.shape) if original_mr.size > 1 else target_shape,
+            'original_mr': original_mr,
+            'sample_name': sample_name,
+            'latent_shape': np.array(synthetic_ct.shape)
         }
-        
-        # Add spacing and origin if available
+
         if spacing is not None:
             save_data['spacing'] = np.array(spacing)
-            print(f"   Including spacing: {spacing} (D,H,W)")
-        
         if origin is not None:
             save_data['origin'] = np.array(origin)
-            print(f"   Including origin: {origin} (D,H,W)")
-        
-        # Save the NPZ file
+
         np.savez_compressed(output_file, **save_data)
-        
+
         print(f"💾 Saved NPZ: {output_file}")
         print(f"   Sample: {sample_name}")
         print(f"   Synthetic CT shape: {synthetic_ct.shape}")
-        print(f"   Target shape: {target_shape}")
         print(f"   HU range: [{synthetic_ct.min():.1f}, {synthetic_ct.max():.1f}]")
-        
-        # Show scale factor
-        if len(target_shape) == 3 and len(synthetic_ct.shape) == 3:
-            scale_factors = [target_shape[i] / synthetic_ct.shape[i] for i in range(3)]
-            print(f"   Scale factors: {scale_factors}")
-        
         return output_file
 
 def main():
@@ -197,13 +196,7 @@ def main():
     # Add custom save_type argument
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--save_type', type=str, default='npz', choices=['npz', 'mha'], 
-                       help='Output format: npz (comprehensive) or mha (medical image format)')
-    
-    # Parse only our custom argument from remaining args
-    import sys
-    save_args, _ = parser.parse_known_args()
-    opt.save_type = save_args.save_type
+
     
     # Force test mode settings
     opt.phase = 'test'
@@ -251,6 +244,7 @@ def main():
             origins = data['origin']  # Origin from original MR
             original_mrs = data['original_mr']  # Original MR data
             
+            
             # Move to GPU if available and requested
             if len(opt.gpu_ids) > 0 and torch.cuda.is_available():
                 real_A = real_A.cuda()
@@ -275,8 +269,8 @@ def main():
                 synthetic_ct = fake_B_np[j]  # Shape: [1, D, H, W]
                 sample_name = sample_names[j] if isinstance(sample_names, (list, tuple)) else sample_names
                 target_shape = target_shapes[j].numpy() if hasattr(target_shapes[j], 'numpy') else target_shapes[j]
-                spacing = spacings[j] if isinstance(spacings, (list, tuple)) else spacings
-                origin = origins[j] if isinstance(origins, (list, tuple)) else origins
+                spacing = [float(s.item()) if torch.is_tensor(s) else float(s) for s in spacings]
+                origin = [float(o.item()) if torch.is_tensor(o) else float(o) for o in origins]
                 original_mr = original_mrs[j].numpy() if hasattr(original_mrs[j], 'numpy') else original_mrs[j]
                 real_A_sample = real_A_np[j]  # Shape: [4, D, H, W]
                 
@@ -285,6 +279,9 @@ def main():
                 
                 # Denormalize to HU values
                 synthetic_ct = denormalize_ct(torch.from_numpy(synthetic_ct)).numpy()
+                print("*" * 60)
+                print(f"spacing {spacing}")
+                print("*" * 60)
                 
                 # Save using specified format
                 output_file = save_synthetic_ct(
